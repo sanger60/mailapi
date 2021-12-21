@@ -25,13 +25,13 @@ app.use(function (req, res, next) {
   next();
 });
 
-const analyticsRouter = require("./routes/mail");
+const mailRouter = require("./routes/mail");
 
-app.use("/mail", analyticsRouter);
+app.use("/mail", mailRouter);
 
 //Health Check for AWS EBS
 app.get("/", (req, res) => {
-  res.status(200);
+  res.status(200).send("Hah");
 });
 
 app.listen(port, () => {
