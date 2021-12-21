@@ -1,5 +1,6 @@
 const router = require("express").Router();
 const nodemailer = require("nodemailer");
+const Mailparser = require("mailparser");
 const { google } = require("googleapis");
 require("dotenv").config();
 
@@ -65,13 +66,68 @@ const listMail = (auth,query) => {
   })
 }
 
+const getMail = (msgId, auth) => {
+  const gmail = google.gmail({version: 'v1', auth});
+  //This api call will fetch the mailbody.
+  gmail.users.messages.get({
+      userId:'me',
+      id: msgId ,
+  }, (err, res) => {
+    console.log(res.data.labelIds.INBOX)
+      if(!err){
+        console.log("no error")
+          var body = res.data.payload.parts[0].body.data;
+
+          var htmlBody = base64.decode(body.replace(/-/g, '+').replace(/_/g, '/'));
+          console.log(htmlBody)
+          var mailparser = new Mailparser();
+
+          mailparser.on("end", (err,res) => {
+              console.log("res",res);
+          })
+
+          mailparser.on('data', (dat) => {
+              if(dat.type === 'text'){
+                  const $ = cheerio.load(dat.textAsHtml);
+                  var links = [];
+                  var modLinks = [];
+                  $('a').each(function(i) {
+                      links[i] = $(this).attr('href');
+                  });
+
+                  //Regular Expression to filter out an array of urls.
+                  var pat = /------[0-9]-[0-9][0-9]/;
+
+                  //A new array modLinks is created which stores the urls.
+                  modLinks = links.filter(li => {
+                      if(li.match(pat) !== null){
+                          return true;
+                      }
+                      else{
+                          return false;
+                      }
+                  });
+                  console.log(modLinks);
+
+                  //This function is called to open all links in the array.
+
+              }
+          })
+
+          mailparser.write(htmlBody);
+          mailparser.end();
+
+      }
+  });
+}
+
 // const useGetMail = async (auth,query) => {
 //   const messages = await listMail(auth, query);
 //   return messages;
 // }
 
 router.route("/list").get((req, res) => {
-  listMail(OAuth2Client, 'label:inbox subject:reminder').then((result) => {
+  listMail(OAuth2Client, 'destek@bionluk.com').then((result) => {
     res.status(200).send(result);
   }).catch((error) => {
     res.status(200).send(error);
