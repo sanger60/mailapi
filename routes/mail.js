@@ -43,7 +43,7 @@ const sendMail = async (to,subject,text) => {
   }
 }
 
-function getNewToken(oAuth2Client, callback) {
+const getNewToken = (oAuth2Client, callback) => {
   const authUrl = oAuth2Client.generateAuthUrl({
     access_type: 'offline',
     scope: scopes,
@@ -57,12 +57,9 @@ function getNewToken(oAuth2Client, callback) {
     rl.close();
     oAuth2Client.getToken(code, (err, token) => {
       if (err) return console.error('Error retrieving access token', err);
+      console.log(token);
       oAuth2Client.setCredentials(token);
-      // Store the token to disk for later program executions
-      fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
-        if (err) return console.error(err);
-        console.log('Token stored to', TOKEN_PATH);
-      });
+
       callback(oAuth2Client);
     });
   });
@@ -77,8 +74,8 @@ const listMail = (auth,query) => {
     gmail.users.messages.list(      
       {        
         userId: 'me',        
-        q:query,      
-        maxResults:5    
+        q:'',      
+        maxResults:10    
       },(err, res) => {        
         if (err) {                    
           reject(err);          
@@ -129,45 +126,51 @@ const listMail = (auth,query) => {
 //   });
 // }
 
-const getMail = async (msgId, auth) => {
-  const gmail = google.gmail({version: 'v1', auth});
+const getMail = (msgId, auth) => {
+  // const gmail = google.gmail({version: 'v1', auth});
+  // let result = "";
 
-  await gmail.users.messages.get({
-      userId:'me',
-      id: msgId
-  }, async (err, res) => {
-      if(!err){
-          console.log("no error",msgId)
-          var body = res.data.payload.parts[0].body.data;
-          var htmlBody = base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
-
-          return htmlBody;
-      } else {
-        return err;
-      }
-  });
-
-  // return result;
-  // return new Promise((resolve, reject) => {    
-  //   const gmail = google.gmail({version: 'v1', auth});
-  //   gmail.users.messages.get({
+  // await gmail.users.messages.get({
   //     userId:'me',
-  //     id: msgId ,
-  //   }, (err, res) => {        
-  //       if (err) {                    
-  //         reject(err);          
-  //         return;        
-  //       }        
-  //       if (!res.data.payload.parts[0].body.data) {                    
-  //         resolve([]);          
-  //         return;       
-  //       }
-  //       var body = res.data.payload.parts[0].body.data;
-  //       var htmlBody = base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
-  //       resolve(htmlBody);      
-  //     }    
-  //   );  
+  //     id: msgId
+  // }, async (err, res) => {
+  //     if(!err){
+  //         console.log("no error",msgId)
+  //         var body = await res.data.payload.parts[0].body.data;
+  //         var htmlBody = await base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
+
+  //         return "a1";
+  //     } else {
+  //       return err;
+  //     }
   // });
+
+  // return "a1";
+  return new Promise((resolve, reject) => {    
+    const gmail = google.gmail({version: 'v1', auth});
+    gmail.users.messages.get({
+      userId:'me',
+      id: msgId ,
+    }, (err, res) => {        
+        if (err) {                    
+          reject(err);          
+          return;        
+        }        
+        if (!res.data.payload) {                    
+          resolve([]);          
+          return;       
+        }
+
+        // for(var i=0;i< res.data.payload.parts.length;i++){
+        //   if(res.data.payload.parts[i].mimeType == "text/html"){
+        //     var body = res.data.payload.parts[i].body.data;
+        //     var htmlBody = base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
+        // var body = res.data.payload.parts[0].body.data;
+        var body = res.data.payload;
+        resolve(body.body.data);
+      }    
+    );  
+  });
 }
 
 // const useGetMail = async (auth,query) => {
@@ -176,14 +179,23 @@ const getMail = async (msgId, auth) => {
 // }
 
 router.route("/list").get((req, res) => {
-  listMail(OAuth2Client, 'destek@bionluk.com').then((result) => {
-    var messages= [];
-    result.forEach(async (element) => {
-      var message = await getMail(element.id, OAuth2Client);
-      console.log(message);
-      messages.push({htmlBody:message});
-    });
-    res.status(200).send(messages);
+  getNewToken(OAuth2Client);
+
+  listMail(OAuth2Client, '*').then(async (result) => {
+    const messages = [];
+    
+    console.log(result);
+
+    for(var i=0;i< result.length;i++){
+      await getMail(result[i].id, OAuth2Client).then((result2) => {
+        messages.push(result2);
+        
+        if(i == result.length - 1){
+          res.json(messages);
+        }
+      });
+    }
+    // res.status(200).send(messages);
   }).catch((error) => {
     res.status(200).send(error);
   });
