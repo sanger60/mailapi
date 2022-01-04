@@ -1,6 +1,9 @@
 const router = require("express").Router();
 const nodemailer = require("nodemailer");
-const Mailparser = require("mailparser");
+const readline = require('readline');
+const MailParser = require('mailparser').MailParser;
+const cheerio = require('cheerio');
+const { base64encode, base64decode } = require('nodejs-base64');
 const { google } = require("googleapis");
 require("dotenv").config();
 
@@ -40,6 +43,31 @@ const sendMail = async (to,subject,text) => {
   }
 }
 
+function getNewToken(oAuth2Client, callback) {
+  const authUrl = oAuth2Client.generateAuthUrl({
+    access_type: 'offline',
+    scope: scopes,
+  });
+  console.log('Authorize this app by visiting this url:', authUrl);
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  rl.question('Enter the code from that page here: ', (code) => {
+    rl.close();
+    oAuth2Client.getToken(code, (err, token) => {
+      if (err) return console.error('Error retrieving access token', err);
+      oAuth2Client.setCredentials(token);
+      // Store the token to disk for later program executions
+      fs.writeFile(TOKEN_PATH, JSON.stringify(token), (err) => {
+        if (err) return console.error(err);
+        console.log('Token stored to', TOKEN_PATH);
+      });
+      callback(oAuth2Client);
+    });
+  });
+}
+
 const listMail = (auth,query) => {
   // const gmail = google.gmail({version: 'v1', auth});    
   // const result = await gmail.users.messages.list({userId: 'me',q: query});
@@ -63,62 +91,83 @@ const listMail = (auth,query) => {
         resolve(res.data.messages);      
       }    
     );  
-  })
+  });
 }
 
-const getMail = (msgId, auth) => {
+
+// const listLabels = (auth) => {
+//   // const gmail = google.gmail({version: 'v1', auth});
+//   // gmail.users.labels.list({
+//   //   userId: 'me',
+//   // }, (err, res) => {
+//   //   if (err) return 'The API returned an error: ' + err;
+//   //   const labels = res.data.labels;
+//   //   if (labels.length) {
+//   //     return labels;
+//   //   } else {
+//   //     return 'No labels found.';
+//   //   }
+//   // });
+
+//   return new Promise((resolve, reject) => {    
+//     const gmail = google.gmail({version: 'v1', auth});    
+//     gmail.users.labels.list(      
+//       {        
+//         userId: 'me'  
+//       },(err, res) => {        
+//         if (err) {                    
+//           reject(err);          
+//           return;        
+//         }        
+//         if (!res.data.labels) {                    
+//           resolve([]);          
+//           return;       
+//         }
+//         resolve(res.data.labels);      
+//       }    
+//     );  
+//   });
+// }
+
+const getMail = async (msgId, auth) => {
   const gmail = google.gmail({version: 'v1', auth});
-  //This api call will fetch the mailbody.
-  gmail.users.messages.get({
+
+  await gmail.users.messages.get({
       userId:'me',
-      id: msgId ,
-  }, (err, res) => {
-    console.log(res.data.labelIds.INBOX)
+      id: msgId
+  }, async (err, res) => {
       if(!err){
-        console.log("no error")
+          console.log("no error",msgId)
           var body = res.data.payload.parts[0].body.data;
+          var htmlBody = base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
 
-          var htmlBody = base64.decode(body.replace(/-/g, '+').replace(/_/g, '/'));
-          console.log(htmlBody)
-          var mailparser = new Mailparser();
-
-          mailparser.on("end", (err,res) => {
-              console.log("res",res);
-          })
-
-          mailparser.on('data', (dat) => {
-              if(dat.type === 'text'){
-                  const $ = cheerio.load(dat.textAsHtml);
-                  var links = [];
-                  var modLinks = [];
-                  $('a').each(function(i) {
-                      links[i] = $(this).attr('href');
-                  });
-
-                  //Regular Expression to filter out an array of urls.
-                  var pat = /------[0-9]-[0-9][0-9]/;
-
-                  //A new array modLinks is created which stores the urls.
-                  modLinks = links.filter(li => {
-                      if(li.match(pat) !== null){
-                          return true;
-                      }
-                      else{
-                          return false;
-                      }
-                  });
-                  console.log(modLinks);
-
-                  //This function is called to open all links in the array.
-
-              }
-          })
-
-          mailparser.write(htmlBody);
-          mailparser.end();
-
+          return htmlBody;
+      } else {
+        return err;
       }
   });
+
+  // return result;
+  // return new Promise((resolve, reject) => {    
+  //   const gmail = google.gmail({version: 'v1', auth});
+  //   gmail.users.messages.get({
+  //     userId:'me',
+  //     id: msgId ,
+  //   }, (err, res) => {        
+  //       if (err) {                    
+  //         reject(err);          
+  //         return;        
+  //       }        
+  //       if (!res.data.payload.parts[0].body.data) {                    
+  //         resolve([]);          
+  //         return;       
+  //       }
+  //       var body = res.data.payload.parts[0].body.data;
+  //       var htmlBody = base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
+  //       resolve(htmlBody);      
+  //     }    
+  //   );  
+  // });
 }
 
 // const useGetMail = async (auth,query) => {
@@ -128,10 +177,18 @@ const getMail = (msgId, auth) => {
 
 router.route("/list").get((req, res) => {
   listMail(OAuth2Client, 'destek@bionluk.com').then((result) => {
-    res.status(200).send(result);
+    var messages= [];
+    result.forEach(async (element) => {
+      var message = await getMail(element.id, OAuth2Client);
+      console.log(message);
+      messages.push({htmlBody:message});
+    });
+    res.status(200).send(messages);
   }).catch((error) => {
     res.status(200).send(error);
   });
+  // const labels = listLabels(OAuth2Client);
+  // res.status(200).send(JSON.stringify(labels));
 });
 
 router.route("/send").post((req, res) => {
