@@ -74,8 +74,7 @@ const listMail = (auth,query) => {
     gmail.users.messages.list(      
       {        
         userId: 'me',        
-        q:'',      
-        maxResults:10    
+        q:'' 
       },(err, res) => {        
         if (err) {                    
           reject(err);          
@@ -127,25 +126,6 @@ const listMail = (auth,query) => {
 // }
 
 const getMail = (msgId, auth) => {
-  // const gmail = google.gmail({version: 'v1', auth});
-  // let result = "";
-
-  // await gmail.users.messages.get({
-  //     userId:'me',
-  //     id: msgId
-  // }, async (err, res) => {
-  //     if(!err){
-  //         console.log("no error",msgId)
-  //         var body = await res.data.payload.parts[0].body.data;
-  //         var htmlBody = await base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
-
-  //         return "a1";
-  //     } else {
-  //       return err;
-  //     }
-  // });
-
-  // return "a1";
   return new Promise((resolve, reject) => {    
     const gmail = google.gmail({version: 'v1', auth});
     gmail.users.messages.get({
@@ -166,8 +146,26 @@ const getMail = (msgId, auth) => {
         //     var body = res.data.payload.parts[i].body.data;
         //     var htmlBody = base64decode(body.replace(/-/g, '+').replace(/_/g, '/'));
         // var body = res.data.payload.parts[0].body.data;
-        var body = res.data.payload;
-        resolve(body.body.data);
+        var body = res.data.payload.body.data != null ? [base64decode(res.data.payload.body.data.replace(/-/g, '+').replace(/_/g, '/'))] : [];
+        if(body == ""){
+          for(var i=0;i< res.data.payload.parts.length;i++){
+            if(res.data.payload.parts[i].body.data != null){
+              var htmlBody = base64decode(res.data.payload.parts[i].body.data.replace(/-/g, '+').replace(/_/g, '/'));
+              body.push(htmlBody);
+            }
+          }
+        }
+        var from = res.data.payload.headers.find(x=> x.name == "From");
+        from = from != null ? from.value : "";
+        var to = res.data.payload.headers.find(x=> x.name == "To");
+        to = to != null ? to.value : "";
+        var date = res.data.payload.headers.find(x=> x.name == "Date");
+        date = date != null ? date.value : "";
+        var subject = res.data.payload.headers.find(x=> x.name == "Subject");
+        subject = subject != null ? subject.value : "";
+
+        resolve({innerMail:body, subject:subject, to:to, from:from, date:date});
+
       }    
     );  
   });
