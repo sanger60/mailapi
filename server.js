@@ -1,4 +1,5 @@
 const express = require("express");
+const http = require("http");
 const cors = require("cors");
 const path = require("path");
 
@@ -26,7 +27,6 @@ app.use(function (req, res, next) {
 });
 
 const mailRouter = require("./routes/mail");
-
 app.use("/mail", mailRouter);
 
 //Health Check for AWS EBS
